@@ -10,7 +10,7 @@ void run_ui(std::mutex *ui_mutex)
         std::lock_guard<std::mutex> guard_ui(*ui_mutex);
         lv_task_handler();
         lv_timer_handler();
-        vTaskDelay(15 / portTICK_PERIOD_MS);
+        vTaskDelay(5 / portTICK_PERIOD_MS);
     }
 }
 

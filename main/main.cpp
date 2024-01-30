@@ -147,5 +147,5 @@ void app_main(void)
     };
     esp_timer_handle_t clock_tick_timer = NULL;
     esp_timer_create(&update_clock_timer_Args, &clock_tick_timer);
-    esp_timer_start_periodic(clock_tick_timer, 1000 * 1000);
+    esp_timer_start_periodic(clock_tick_timer, 250 * 1000);
 }
