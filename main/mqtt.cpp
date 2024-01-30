@@ -22,7 +22,6 @@ void log_error_if_nonzero(const char *message, int error_code)
     }
 }
 
-extern "C"
 void mqtt_event_handler(MQTTClient *mqttClient, esp_event_base_t base, int32_t event_id, esp_mqtt_event_handle_t event_data)
 {
     mqttClient->handle_event(base, event_id, event_data);

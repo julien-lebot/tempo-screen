@@ -8,7 +8,6 @@
 
 class MQTTClient;
 
-extern "C"
 void mqtt_event_handler(MQTTClient *mqttClient, esp_event_base_t base, int32_t event_id, esp_mqtt_event_handle_t event_data);
 
 class MQTTClient

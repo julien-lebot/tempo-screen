@@ -3,7 +3,6 @@
 
 #pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
 
-extern "C"
 void run_ui(std::mutex *ui_mutex)
 {
     while (1)
@@ -113,12 +112,23 @@ void AppUi::init()
     lv_obj_set_width(ui_Remaining_time, LV_SIZE_CONTENT);   /// 1
     lv_obj_set_height(ui_Remaining_time, LV_SIZE_CONTENT);    /// 1
     lv_obj_set_align(ui_Remaining_time, LV_ALIGN_CENTER);
-    lv_label_set_text(ui_Remaining_time, "-01:34");
-    lv_obj_set_x(ui_Remaining_time, 24);
+    lv_label_set_text(ui_Remaining_time, "-00:00");
+    lv_obj_set_x(ui_Remaining_time, 10);
     lv_obj_set_y(ui_Remaining_time, 14);
     lv_obj_set_style_text_color(ui_Remaining_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa(ui_Remaining_time, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_Remaining_time, &lv_font_montserrat_40, LV_PART_MAIN | LV_STATE_DEFAULT);
+
+    ui_Remaining_time_seconds = lv_label_create(lv_screen_active());
+    lv_obj_set_width(ui_Remaining_time_seconds, LV_SIZE_CONTENT);   /// 1
+    lv_obj_set_height(ui_Remaining_time_seconds, LV_SIZE_CONTENT);    /// 1
+    lv_obj_set_align(ui_Remaining_time_seconds, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Remaining_time_seconds, "00");
+    lv_obj_set_x(ui_Remaining_time_seconds, 85);
+    lv_obj_set_y(ui_Remaining_time_seconds, 20);
+    lv_obj_set_style_text_color(ui_Remaining_time_seconds, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui_Remaining_time_seconds, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui_Remaining_time_seconds, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
     ui_Tarif = lv_label_create(lv_screen_active());
     lv_obj_set_width(ui_Tarif, LV_SIZE_CONTENT);   /// 1
@@ -131,7 +141,7 @@ void AppUi::init()
     lv_obj_set_style_text_opa(ui_Tarif, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_text_font(ui_Tarif, &lv_font_montserrat_14, LV_PART_MAIN | LV_STATE_DEFAULT);
 
-    xTaskCreatePinnedToCore(TaskFunction_t(&run_ui), "ui_task", 4096, (void*)&_ui_mutex, 10, nullptr, 1);
+    xTaskCreatePinnedToCore(TaskFunction_t(&run_ui), "ui_task", 4096, (void*)&_ui_mutex, 100, nullptr, 1);
 }
 
 void AppUi::set_phase_color(uint8_t phase_id, lv_color_t phase_color)
@@ -145,4 +155,11 @@ void AppUi::set_phase_power(uint8_t phase_id, uint16_t power)
     lv_label_set_text_fmt(_phases[phase_id].label, "%d W", power);
     lv_anim_set_values(&_phases[phase_id].arc_anim, lv_arc_get_value(_phases[phase_id].arc), power);
     lv_anim_start(&_phases[phase_id].arc_anim);
+}
+
+void AppUi::set_clock(int clock)
+{
+    std::lock_guard<std::mutex> guard_ui(_ui_mutex);
+    lv_label_set_text_fmt(ui_Remaining_time, "-%02d:%02d", clock / 3600, (clock % 3600) / 60);
+    lv_label_set_text_fmt(ui_Remaining_time_seconds, "%02d", (clock % 3600) % 60);
 }

@@ -1,8 +1,11 @@
+#include <chrono>
+#include <ctime>
 #include <cstdint>
 #include <charconv>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <esp_event.h>
+#include <esp_netif_sntp.h>
 #include <driver/gpio.h>
 #include <nvs_flash.h>
 #include <esp_netif.h>
@@ -35,7 +38,6 @@ void lvgl_tick(void *arg)
     lv_tick_inc(lvgl_tick_period_ms);
 }
 
-extern "C"
 void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
     lcd.set_window(area->x1, area->y1, area->x2, area->y2, DISP_SPI_SEND_POLLING);
@@ -46,6 +48,46 @@ void disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 }
 
 static lv_color_t buf[ESPDevice::DeviceDefinitions::screen_width * ESPDevice::DeviceDefinitions::screen_height / 10];
+
+time_t make_time(struct tm *src, int hour, int min)
+{
+    struct tm dest;
+    dest.tm_mday = src->tm_mday;
+    dest.tm_mon = src->tm_mon;
+    dest.tm_year = src->tm_year;
+    dest.tm_mday = src->tm_mday;
+    dest.tm_hour = hour;
+    dest.tm_min = min;
+    dest.tm_sec = 0;
+    return mktime(&dest);
+}
+
+void clock_tick(void *)
+{
+    time_t rawtime;
+    time(&rawtime);
+    struct tm * now = localtime(&rawtime);
+
+    time_t clocks[4] =
+    {
+        make_time(now, 2, 50),
+        make_time(now, 6, 50),
+        make_time(now, 13, 50),
+        make_time(now, 15, 50)
+    };
+
+    int smallest_pos_diff = std::numeric_limits<int>::max();
+    for (int i = 0; i < 3; ++i)
+    {
+        int diff = (int)difftime(clocks[i], rawtime);
+        if (diff > 0 && diff < smallest_pos_diff)
+        {
+            smallest_pos_diff = diff;
+        }
+    }
+
+    ui.set_clock(smallest_pos_diff);
+}
 
 extern "C"
 void app_main(void)
@@ -62,6 +104,13 @@ void app_main(void)
 
     WifiClient wifi;
     wifi.connect("HOME_LEGACY", "cra2qm5q");
+
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&config);
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK)
+    {
+        printf("Failed to update system time within 10s timeout");
+    }
 
     mqtt.connect([](esp_mqtt_client_config_t &cfg) {
     });
@@ -91,4 +140,12 @@ void app_main(void)
     esp_timer_handle_t lvgl_tick_timer = NULL;
     esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer);
     esp_timer_start_periodic(lvgl_tick_timer, lvgl_tick_period_ms * 1000);
+
+    const esp_timer_create_args_t update_clock_timer_Args = {
+      .callback = &clock_tick,
+      .name = "clock_tick"
+    };
+    esp_timer_handle_t clock_tick_timer = NULL;
+    esp_timer_create(&update_clock_timer_Args, &clock_tick_timer);
+    esp_timer_start_periodic(clock_tick_timer, 1000 * 1000);
 }
