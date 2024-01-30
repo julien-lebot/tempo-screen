@@ -1,5 +1,6 @@
 set(srcs
     "main.cpp"
+    "mqtt.cpp"
     "wifi.cpp"
 )
 
