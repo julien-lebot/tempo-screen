@@ -1,4 +1,5 @@
 set(srcs
+    "app_ui.cpp"
     "main.cpp"
     "mqtt.cpp"
     "wifi.cpp"
