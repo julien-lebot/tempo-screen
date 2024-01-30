@@ -25,5 +25,5 @@ public:
     void init();
     void start();
     void set_phase_color(uint8_t phase_id, lv_color_t phase_color);
-    void set_phase_power(uint8_t phase_id, float power);
+    void set_phase_power(uint8_t phase_id, uint16_t power);
 };

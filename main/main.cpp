@@ -67,19 +67,19 @@ void app_main(void)
     });
     mqtt.subscribe("power_meter/phase_1_power", [](auto payload)
     {
-        float power = 0;
+        uint16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(0, power);
     });
     mqtt.subscribe("power_meter/phase_2_power", [](auto payload)
     {
-        float power = 0;
+        uint16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(1, power);
     });
     mqtt.subscribe("power_meter/phase_3_power", [](auto payload)
     {
-        float power = 0;
+        uint16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(2, power);
     });

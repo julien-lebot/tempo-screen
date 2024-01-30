@@ -1,8 +1,4 @@
 #include <cstdio>
-#include <iostream>
-#include <string>
-#include <sstream>
-#include <iomanip>
 #include "app_ui.hpp"
 
 #pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"
@@ -58,6 +54,8 @@ void AppUi::init()
 
         lv_obj_set_style_arc_width(_phases[phase_index].arc, 15, LV_PART_MAIN);
         lv_obj_set_style_arc_width(_phases[phase_index].arc, 15, LV_PART_INDICATOR);
+
+        lv_arc_set_range(_phases[phase_index].arc, 0, 12000);
 
         lv_anim_init(&_phases[phase_index].arc_anim);
         lv_anim_set_var(&_phases[phase_index].arc_anim, _phases[phase_index].arc);
@@ -141,14 +139,10 @@ void AppUi::set_phase_color(uint8_t phase_id, lv_color_t phase_color)
 
 }
 
-void AppUi::set_phase_power(uint8_t phase_id, float power)
+void AppUi::set_phase_power(uint8_t phase_id, uint16_t power)
 {
     std::lock_guard<std::mutex> guard_ui(_ui_mutex);
-    std::stringstream sstr;
-    sstr << std::fixed << std::setprecision(0) << power << " W";
-    //std::snprintf()
-    lv_label_set_text(_phases[phase_id].label, sstr.str().c_str());
-    int arc_value = static_cast<int>((power * 100.0 / 12000.0));
-    lv_anim_set_values(&_phases[phase_id].arc_anim, lv_arc_get_value(_phases[phase_id].arc), arc_value);
+    lv_label_set_text_fmt(_phases[phase_id].label, "%d W", power);
+    lv_anim_set_values(&_phases[phase_id].arc_anim, lv_arc_get_value(_phases[phase_id].arc), power);
     lv_anim_start(&_phases[phase_id].arc_anim);
 }
