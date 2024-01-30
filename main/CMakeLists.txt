@@ -1,5 +1,6 @@
 set(srcs
     "main.cpp"
+    "wifi.cpp"
 )
 
 idf_component_register(SRCS ${srcs}
