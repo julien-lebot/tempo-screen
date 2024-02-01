@@ -1,7 +1,12 @@
-#include <chrono>
+
 #include <ctime>
 #include <cstdint>
 #include <charconv>
+#include <chrono>
+#include <vector>
+#include <iostream>
+#include <tuple>
+
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <esp_event.h>
@@ -10,18 +15,25 @@
 #include <nvs_flash.h>
 #include <esp_netif.h>
 
+#include <esp_timer_cxx.hpp>
+
 #include "device.hpp"
 #include "esp32s3.hpp"
 #include "spi_lcd.hpp"
 #include "wifi.hpp"
 #include "mqtt.hpp"
 #include "app_ui.hpp"
+#include "data_model/electricity_rate_provider.hpp"
+
+#include "date/date.h"
+#include "date/ptz.h"
 
 typedef Device<ESP32S3> ESPDevice;
 static ESPDevice dev;
 static SpiLcd<ESPDevice> lcd;
 static AppUi ui;
 static MQTTClient mqtt;
+static DummyElectricityRateProvider rateProvider;
 
 void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 {
@@ -62,55 +74,109 @@ time_t make_time(struct tm *src, int hour, int min)
     return mktime(&dest);
 }
 
-void clock_tick(void *)
+class ElectricityRateViewModel
 {
-    time_t rawtime;
-    time(&rawtime);
-    struct tm * now = localtime(&rawtime);
+private:
+    AppUi &_ui;
+    std::vector<ElectricityRate> _rates;
+    idf::esp_timer::ESPTimer _clockTimer;
+    int _current_rate_index;
 
-    time_t clocks[4] =
+    void clock_tick()
     {
-        make_time(now, 2, 50),
-        make_time(now, 6, 50),
-        make_time(now, 13, 50),
-        make_time(now, 15, 50)
-    };
-
-    int smallest_pos_diff = std::numeric_limits<int>::max();
-    for (int i = 0; i < 3; ++i)
-    {
-        int diff = (int)difftime(clocks[i], rawtime);
-        if (diff > 0 && diff < smallest_pos_diff)
+        if (_rates.empty())
         {
-            smallest_pos_diff = diff;
+            printf("No rates received yet\n");
+            return;
         }
+
+        //const char* tz = getenv("TZ");
+        auto today = date::zoned_time{ Posix::time_zone{"CET-1CEST,M3.5.0,M10.5.0/3"}, std::chrono::system_clock::now() };
+        //std::cout << "The time now is " << today << std::endl;
+
+        float min_price = std::numeric_limits<float>::max();
+        float max_price = std::numeric_limits<float>::min();
+        std::vector<std::tuple<const ElectricityRate*, date::local_time<AppUi::duration_t>>> clocks;
+        for (const auto& rate : _rates)
+        {
+            clocks.emplace_back(std::make_tuple(&rate, std::chrono::floor<std::chrono::days>(today.get_local_time()) - std::chrono::days{ 1 } + std::chrono::hours{ rate.startTime.hours } + std::chrono::minutes{ rate.startTime.minutes }));
+            clocks.emplace_back(std::make_tuple(&rate, std::chrono::floor<std::chrono::days>(today.get_local_time()) + std::chrono::hours{ rate.startTime.hours } + std::chrono::minutes{ rate.startTime.minutes }));
+            clocks.emplace_back(std::make_tuple(&rate, std::chrono::floor<std::chrono::days>(today.get_local_time()) + std::chrono::days{ 1 } + std::chrono::hours{ rate.startTime.hours } + std::chrono::minutes{ rate.startTime.minutes }));
+            min_price = std::min(min_price, rate.price);
+            max_price = std::max(max_price, rate.price);
+        }
+
+        auto smallest_pos_diff = AppUi::duration_t::max();
+        auto smallest_neg_diff = AppUi::duration_t::min();
+        int current_rate_index = -1;
+        int next_rate_index = -1;
+        
+        for (int i = 0; i < clocks.size(); ++i)
+        {
+            auto diff = std::chrono::duration_cast<AppUi::duration_t>(std::get<1>(clocks[i]) - today.get_local_time());
+            if (diff > AppUi::duration_t::zero() && diff < smallest_pos_diff)
+            {
+                smallest_pos_diff = diff;
+                next_rate_index = i;
+            }
+            if (diff < AppUi::duration_t::zero() && diff > smallest_neg_diff)
+            {
+                smallest_neg_diff = diff;
+                current_rate_index = i;
+            }
+        }
+
+        if (current_rate_index < 0 || next_rate_index < 0)
+        {
+            // Maybe the time has not been initialized yet
+            printf("No valid rates detected: %d, %d\n", current_rate_index, next_rate_index);
+            return;
+        }
+
+        if (_current_rate_index != current_rate_index)
+        {
+            // We changed rate
+            _current_rate_index = current_rate_index;
+
+            _ui.set_background_color(std::get<0>(clocks[current_rate_index])->color);
+            float current_price = std::get<0>(clocks[current_rate_index])->price;
+            float mapped_price = (current_price - min_price) / (max_price - min_price);
+            const int min_stop = 127;
+            const int max_stop = 255;
+            int gradient_stop = 255 - static_cast<int>(min_stop + (max_stop - min_stop) * mapped_price);
+            _ui.set_gradient_stop(gradient_stop);
+            _ui.set_tarif_name(std::get<0>(clocks[current_rate_index])->name);
+            _ui.set_next_color(std::get<0>(clocks[next_rate_index])->color);
+        }
+        _ui.set_remaining_duration(smallest_pos_diff);
     }
 
-    ui.set_clock(smallest_pos_diff);
-}
+    void on_rates_changed(std::vector<ElectricityRate> const &newRates)
+    {
+        _rates = newRates;
+    }
+public:
+    ElectricityRateViewModel(AppUi &ui, IElectricityRateProvider &electricityRateProvider)
+    : _ui(ui)
+    , _clockTimer(std::bind(&ElectricityRateViewModel::clock_tick, this))
+    , _current_rate_index(-1)
+    {
+        _rates = electricityRateProvider.get_rates();
+        electricityRateProvider.subscribe(std::bind(&ElectricityRateViewModel::on_rates_changed, this, std::placeholders::_1));
+        _clockTimer.start_periodic(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::milliseconds(500)));
+    }
+};
 
-extern "C"
-void app_main(void)
+void setup_network(void *)
 {
-    lv_init();
-    lv_display_t * disp = lv_display_create(ESPDevice::DeviceDefinitions::screen_width, ESPDevice::DeviceDefinitions::screen_height);
-    lv_display_set_flush_cb(disp, disp_flush);
-    lv_display_set_buffers(disp, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
-    ui.init();
-
-    ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
     WifiClient wifi;
-    wifi.connect("HOME_LEGACY", "cra2qm5q");
 
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     esp_netif_sntp_init(&config);
-    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK)
-    {
-        printf("Failed to update system time within 10s timeout");
-    }
+    esp_netif_sntp_sync_wait(portMAX_DELAY);
+
+    //time_t now = time(nullptr);
+    //printf("Time acquired, it is: %s\n", ctime(&now));
 
     mqtt.connect([](esp_mqtt_client_config_t &cfg) {
     });
@@ -133,6 +199,20 @@ void app_main(void)
         ui.set_phase_power(2, power);
     });
 
+    while (1)
+    {
+        vTaskDelay(portMAX_DELAY);
+    }
+}
+
+void setup_ui(void *)
+{
+    lv_init();
+    lv_display_t * disp = lv_display_create(ESPDevice::DeviceDefinitions::screen_width, ESPDevice::DeviceDefinitions::screen_height);
+    lv_display_set_flush_cb(disp, disp_flush);
+    lv_display_set_buffers(disp, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    ui.init();
+
     const esp_timer_create_args_t lvgl_tick_timer_args = {
       .callback = &lvgl_tick,
       .name = "lvgl_tick"
@@ -141,11 +221,20 @@ void app_main(void)
     esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer);
     esp_timer_start_periodic(lvgl_tick_timer, lvgl_tick_period_ms * 1000);
 
-    const esp_timer_create_args_t update_clock_timer_Args = {
-      .callback = &clock_tick,
-      .name = "clock_tick"
-    };
-    esp_timer_handle_t clock_tick_timer = NULL;
-    esp_timer_create(&update_clock_timer_Args, &clock_tick_timer);
-    esp_timer_start_periodic(clock_tick_timer, 250 * 1000);
+    new ElectricityRateViewModel(ui, rateProvider);
+}
+
+extern "C"
+void app_main(void)
+{
+    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    // TODO: Make configurable
+    setenv("TZ", "CET-1", 1);
+    tzset();
+
+    xTaskCreatePinnedToCore(TaskFunction_t(&setup_network), "setup_network", 4096, nullptr, 10, nullptr, 0);
+    setup_ui(nullptr);
 }

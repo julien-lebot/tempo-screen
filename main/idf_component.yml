@@ -1,3 +1,4 @@
 dependencies:
+  espressif/esp-idf-cxx: "^1.0.2-beta"
   idf: ">=4.4"
   lvgl/lvgl: "^9.0.0"
