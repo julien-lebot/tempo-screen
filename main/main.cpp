@@ -33,7 +33,6 @@ static ESPDevice dev;
 static SpiLcd<ESPDevice> lcd;
 static AppUi ui;
 static MQTTClient mqtt;
-static DummyElectricityRateProvider rateProvider;
 
 void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 {
@@ -169,11 +168,7 @@ public:
 
 void setup_network(void *)
 {
-    WifiClient wifi;
 
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-    esp_netif_sntp_init(&config);
-    esp_netif_sntp_sync_wait(portMAX_DELAY);
 
     //time_t now = time(nullptr);
     //printf("Time acquired, it is: %s\n", ctime(&now));
@@ -182,19 +177,19 @@ void setup_network(void *)
     });
     mqtt.subscribe("power_meter/phase_1_power", [](auto payload)
     {
-        uint16_t power = 0;
+        int16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(0, power);
     });
     mqtt.subscribe("power_meter/phase_2_power", [](auto payload)
     {
-        uint16_t power = 0;
+        int16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(1, power);
     });
     mqtt.subscribe("power_meter/phase_3_power", [](auto payload)
     {
-        uint16_t power = 0;
+        int16_t power = 0;
         std::from_chars(payload.data(), payload.data() + payload.length(), power);
         ui.set_phase_power(2, power);
     });
@@ -221,7 +216,8 @@ void setup_ui(void *)
     esp_timer_create(&lvgl_tick_timer_args, &lvgl_tick_timer);
     esp_timer_start_periodic(lvgl_tick_timer, lvgl_tick_period_ms * 1000);
 
-    new ElectricityRateViewModel(ui, rateProvider);
+    static DummyElectricityRateProvider p;
+    new ElectricityRateViewModel(ui, p);
 }
 
 extern "C"
@@ -234,6 +230,10 @@ void app_main(void)
     // TODO: Make configurable
     setenv("TZ", "CET-1", 1);
     tzset();
+
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&config);
+    esp_netif_sntp_sync_wait(portMAX_DELAY);
 
     xTaskCreatePinnedToCore(TaskFunction_t(&setup_network), "setup_network", 4096, nullptr, 10, nullptr, 0);
     setup_ui(nullptr);

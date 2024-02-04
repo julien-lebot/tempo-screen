@@ -6,6 +6,9 @@ set(srcs
     "wifi.cpp"
     "data_model/electricity_rate_provider.cpp"
     "images/wifi.c"
+    "fonts/CourierPrimeRegular14.c"
+    "fonts/CourierPrimeBold40.c"
+    "fonts/CourierPrimeBold14.c"
 )
 
 idf_component_register(SRCS ${srcs}

@@ -34,7 +34,7 @@ public:
     void init();
     void start();
     void set_phase_color(uint8_t phase_id, lv_color_t const &phase_color);
-    void set_phase_power(uint8_t phase_id, uint16_t power);
+    void set_phase_power(uint8_t phase_id, int16_t power);
     void set_remaining_duration(duration_t duration);
     void set_background_color(lv_color_t const &bg_color);
     void set_next_color(lv_color_t const &color);
