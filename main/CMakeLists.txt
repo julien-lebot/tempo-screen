@@ -5,6 +5,7 @@ set(srcs
     "mqtt.cpp"
     "wifi.cpp"
     "data_model/electricity_rate_provider.cpp"
+    "data_model/home_assistant_electricity_rate_provider.cpp"
     "images/wifi.c"
     "fonts/CourierPrimeRegular14.c"
     "fonts/CourierPrimeBold40.c"

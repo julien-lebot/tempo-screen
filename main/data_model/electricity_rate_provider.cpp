@@ -1,7 +1,6 @@
 #include <chrono>
 #include "date/date.h"
 #include "date/ptz.h"
-
 #include "electricity_rate_provider.hpp"
 
 std::vector<ElectricityRate> get_rates_hp_hc()
@@ -42,7 +41,7 @@ std::vector<ElectricityRate> get_rates_hp_hc()
             .name = "Heures pleines",
             .startTime = 
             {
-                .hours = 16,
+                .hours = 15,
                 .minutes = 50
             },
             .price = 0.246f,
@@ -123,7 +122,7 @@ std::vector<ElectricityRate> get_rates_tempo()
 }
 
 DummyElectricityRateProvider::DummyElectricityRateProvider()
-: _rates(get_rates_hp_hc())
+: _rates(get_rates_tempo())
 {
 }
 

@@ -3,6 +3,7 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <array>
 #include <lvgl.h>
 
 // Defines a point in time where the electricity rate changes
@@ -39,6 +40,21 @@ private:
     std::vector<IElectricityRateProvider::subscription_fn> _subscribers;
 public:
     DummyElectricityRateProvider();
+    std::vector<ElectricityRate> const &get_rates() const;
+    void subscribe(IElectricityRateProvider::subscription_fn subscribe_fn);
+};
+
+class MQTTClient;
+
+class HomeAssistantElectricityRateProvider : public IElectricityRateProvider
+{
+private:
+    std::vector<IElectricityRateProvider::subscription_fn> _subscribers;
+    std::vector<ElectricityRate> _current_rates;
+
+    void notify_rates_changed();
+public:
+    HomeAssistantElectricityRateProvider(MQTTClient &mqtt_client);
     std::vector<ElectricityRate> const &get_rates() const;
     void subscribe(IElectricityRateProvider::subscription_fn subscribe_fn);
 };
